@@ -1,0 +1,125 @@
+
+// ---- SIMULATED DATA ----------------------------------------
+
+create function simulated_sensor_stream() -> stream of vector
+  as select merge([s,t,u])
+       from stream s, stream t, stream u
+      where s = (select stream of [now(), "s", hb]   // stream "s"
+                   from real hb
+                  where hb in heartbeat(0.2))
+        and t = (select stream of [now(), "t", hb]   // stream "t"
+                   from real hb
+                  where hb in heartbeat(0.5))
+        and u = (select stream of [now(), "u", hb]   // stream "u"
+                   from real hb
+                  where hb in heartbeat(0.9));
+
+
+// ---- PARAMETERS -------------------------------------
+
+create function weights_upload_interval() -> Real
+  as stored;
+
+set weights_upload_interval() = 10.0;  // Upload weights every X seconds
+
+
+
+// ---- WEIGHTS ----------------------------------------
+
+create function my_weights() -> vector
+ as stored;
+
+set my_weights() = [1.0, 2.0, 3.0, 4.0];
+
+
+create function update_weights(vector new_weights) -> vector
+  as {
+    /* Do some processing... */ 
+    set my_weights() = new_weights;
+    return new_weights;
+  };
+
+
+
+// ---- PUBLISH TO SERVER -------------------------------------------------
+
+// Publish weights to server
+
+create function publish_my_weights(timeval time) -> Boolean
+    as sink(publish(streamof(ts(time, my_weights())), "weights@central-server"));
+
+
+create function check_upload(Stream of Timeval s) -> Stream of Timeval 
+  as { 
+    declare timeval last_upload;
+    set last_upload = timeval(0);
+    for each Timeval tv where tv in s {
+      case when tv - last_upload > weights_upload_interval() or last_upload > tv then {
+                publish_my_weights(tv);
+                set last_upload = tv;
+              }
+        end;
+        return tv;
+    }
+  };
+
+
+
+// ---- MAIN EDGE PROCESSING LOGIC ----------------------------------------
+
+
+create function predict_result() -> stream
+  as select stream of result
+       from vector v, real t, charstring topic, real val, real result
+      where v in subscribe("sensor_stream")
+        and [t, topic, val] = v      // replace with appropriate processing...
+        and result = 10 * val + 5;   // ...
+
+
+create function upload_weights_on_condition() -> stream of timeval
+  as select check_upload(
+                (select stream of ts(t, val)
+                   from vector v, real t, charstring topic, real val
+                  where v in subscribe("sensor_stream")
+                    and [t, topic, val] = v
+                    and topic = "u"));    // upload weights on signal 'u'
+
+
+create function update_weights_on_t() -> stream of vector
+  as select stream of update_weights(new_weights)
+       from vector v, real t, charstring topic, real val,
+            vector new_weights
+      where v in subscribe("sensor_stream")
+        and [t, topic, val] = v
+        and topic = "t"
+        and new_weights = [val, val*val/100, val - 10, val / 2];
+
+
+// ---- RUN QUERIES -------------------------------------------------------
+
+for each EdgeQuery eq {
+  delete eq;
+};
+
+create EdgeQuery(name, statement, options) instances
+  ("playback_simulated_signal_stream",
+   "select [this_peerid(),v]
+      from vector v
+     where v in publish(simulated_sensor_stream(), 'sensor_stream');",
+   {}),
+  ("predict_result", "predict_result()", {}),  // results should be sent somewhere...
+  ("upload_weights_on_condition", "upload_weights_on_condition()", {}),
+  ("update_weights_on_t", "update_weights_on_t()", {});
+
+//run_stored_edge_query("predict_result");
+
+run_stored_edge_queries();
+
+
+
+//select [this_peerid(),v]
+//      from vector v
+//     where v in publish(simulated_sensor_stream(), 'sensor_stream');
+
+//predict_result();
+

@@ -1,0 +1,39 @@
+
+print("Starting server model");
+
+
+create function central_model_statement_id() -> Integer
+  as stored;
+
+
+/*****************************************************
+ *               WEIGHTS MANAGEMENT
+ *****************************************************/
+
+/* We predefine the flow onto which the edge model will publish weights */
+publish:define("weights", 1000, true, true);
+
+create function listen_for_weights() -> Stream of Timeval of vector
+  as subscribe("weigths");
+
+
+
+
+/*****************************************************
+ *             MODEL FUNCTIONS STARTUP
+ *****************************************************/
+
+create function central_model_statement() -> Stream
+  as select stream of tv
+      from timeval of vector tv
+     where tv in listen_for_weights()
+       and print(tv);
+
+
+/* Start the main server model */
+set central_model_statement_id() = post_statement("central_model_statement()");
+
+
+/* In order for the posted statements to run, this
+peer must connect as a server */
+print("Starting server");

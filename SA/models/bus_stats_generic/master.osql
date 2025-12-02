@@ -1,0 +1,50 @@
+// bus stream averages
+
+create function timeval_stream(stream of vector bus_stream)
+                              -> Stream of timeval of vector
+/* Wrap the bus stream in timevals (to fit input format for twinagg) */ 
+  as select stream of ts(t, v) 
+       from vector v,
+            charstring topic,
+            real t
+      where v in bus_stream
+        and topic = v[2]
+        and t = v[1];
+
+
+create function windowed_bus_stream(stream of vector bus_stream, real t)
+                                   -> stream of timeval of vector
+/* Create time windows of a bus stream*/
+  as twinagg(timeval_stream(bus_stream), t, t);
+
+
+create function compute_aggr(timeval of vector of vector window,
+                             function aggr_f) -> vector
+/* Compute the aggregations for each topic in a bus stream window */
+  as select vector of topic, aggr_val
+       from Real time, Charstring topic, 
+            Real value, Vector v, real aggr_val
+      where v in value(window)
+        and [time, topic, value] = v
+        and aggr_val = apply(aggr_f,[value])[1]; 
+//      group by topic;
+
+
+
+create function window_stats(timeval of vector of vector window,
+                             vector of function vf) -> Timeval
+/* Compute mean for each topic and return result as timeval with timestamp
+   from window */
+  as select ts(window, v)
+       from vector v, function aggr_f            
+      where aggr_f in vf
+        and v = compute_aggr(window, aggr_f);
+
+
+create function topic_means(stream of vector bus_stream,
+                            vector of function vf,
+                            real t) -> Stream of Timeval
+/* Compute a stream of means for every topic in the bus stream */
+  as select stream of window_stats(w, vf)
+      from timeval of vector of vector w
+     where w in windowed_bus_stream(bus_stream, t);

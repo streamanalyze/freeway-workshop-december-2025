@@ -1,0 +1,3 @@
+load_osql("server.osql");
+
+listen();

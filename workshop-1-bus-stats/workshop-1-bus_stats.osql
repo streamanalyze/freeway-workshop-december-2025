@@ -1,0 +1,306 @@
+// 2025-12-04 Workshop Volvo
+
+//------ TEST STREAM ------------------------------------------
+
+// Create synthetic bus stream
+//
+// One signal 's' every 0.1 seconds
+// One signal 't' every 0.5 seconds
+//
+create function bus_test_stream() -> stream of vector
+  as select merge([s,t])
+       from stream s, stream t
+      where s = (select stream of [now(), "s", hb]   // stream "s"
+                   from real hb
+                  where hb in heartbeat(0.1))
+        and t = (select stream of [now(), "t", hb]   // stream "t"
+                   from real hb
+                  where hb in heartbeat(0.5));
+
+// Test the stream
+bus_test_stream();
+
+
+//------ START IMPLEMENTATION ------------------------------------------
+
+// To do statistics we need to do time-based windowing, so we start by
+// wrapping the bus signal vectors in a timeval.
+
+create function timeval_stream() -> Stream of timeval of vector
+/* wrap the bus stream in timevals to fit input format for twinagg */ 
+  as select stream of ts(t, v)
+       from vector v,
+            charstring topic,
+            real t
+      where v in bus_test_stream()
+        and topic = v[2]
+        and t = v[1];
+
+// Test stream wrapped in timevals
+timeval_stream();
+
+
+// Now that we have timevals for each vector in the bus stream
+// we can make time-based windows
+
+create function windowed_bus_stream() -> stream of timeval of vector
+/* Make time-based windows of stream of timevals */
+  as twinagg(timeval_stream(), 2, 2);
+
+// Test windowed bus stream
+windowed_bus_stream();
+
+
+// ==> 2 seconds of bus data in each window
+//
+// ts(|2025-11-26T08:41:51.226Z|, [[|2025-11-26T08:41:49.231Z|,'t',10],
+//                                 [|2025-11-26T08:41:49.231Z|,'s',9.99999],
+//                                 [|2025-11-26T08:41:49.337Z|,'s',10.09999],
+//                                 [|2025-11-26T08:41:49.428Z|,'s',10.19999],
+//                                 [|2025-11-26T08:41:49.535Z|,'s',10.29999],
+//                                 [|2025-11-26T08:41:49.626Z|,'s',10.39999],
+//                                 [|2025-11-26T08:41:49.733Z|,'t',10.5],
+//                                 [|2025-11-26T08:41:49.733Z|,'s',10.49999],
+//                                 [|2025-11-26T08:41:49.839Z|,'s',10.59999],
+//                                 [|2025-11-26T08:41:49.929Z|,'s',10.69999],
+//                                 [|2025-11-26T08:41:50.036Z|,'s',10.79999],
+//                                 [|2025-11-26T08:41:50.126Z|,'s',10.89999],
+//                                 [|2025-11-26T08:41:50.234Z|,'t',11],
+//                                 [|2025-11-26T08:41:50.234Z|,'s',10.99999],
+//                                 [|2025-11-26T08:41:50.340Z|,'s',11.09999],
+//                                 [|2025-11-26T08:41:50.430Z|,'s',11.19999],
+//                                 [|2025-11-26T08:41:50.535Z|,'s',11.29999],
+//                                 [|2025-11-26T08:41:50.626Z|,'s',11.39999],
+//                                 [|2025-11-26T08:41:50.731Z|,'t',11.5],
+//                                 [|2025-11-26T08:41:50.731Z|,'s',11.49999],
+//                                 [|2025-11-26T08:41:50.837Z|,'s',11.59999],
+//                                 [|2025-11-26T08:41:50.929Z|,'s',11.69999],
+//                                 [|2025-11-26T08:41:51.036Z|,'s',11.79999],
+//                                 [|2025-11-26T08:41:51.126Z|,'s',11.89999]])
+
+
+// Let's look at one window in the stream of windows
+
+set :window = ts(|2025-11-26T08:41:51.226Z|, [[|2025-11-26T08:41:49.231Z|,'t',10],
+                                              [|2025-11-26T08:41:49.231Z|,'s',9.99999],
+                                              [|2025-11-26T08:41:49.337Z|,'s',10.09999],
+                                              [|2025-11-26T08:41:49.428Z|,'s',10.19999],
+                                              [|2025-11-26T08:41:49.535Z|,'s',10.29999],
+                                              [|2025-11-26T08:41:49.626Z|,'s',10.39999],
+                                              [|2025-11-26T08:41:49.733Z|,'t',10.5],
+                                              [|2025-11-26T08:41:49.733Z|,'s',10.49999],
+                                              [|2025-11-26T08:41:49.839Z|,'s',10.59999],
+                                              [|2025-11-26T08:41:49.929Z|,'s',10.69999],
+                                              [|2025-11-26T08:41:50.036Z|,'s',10.79999],
+                                              [|2025-11-26T08:41:50.126Z|,'s',10.89999],
+                                              [|2025-11-26T08:41:50.234Z|,'t',11],
+                                              [|2025-11-26T08:41:50.234Z|,'s',10.99999],
+                                              [|2025-11-26T08:41:50.340Z|,'s',11.09999],
+                                              [|2025-11-26T08:41:50.430Z|,'s',11.19999],
+                                              [|2025-11-26T08:41:50.535Z|,'s',11.29999],
+                                              [|2025-11-26T08:41:50.626Z|,'s',11.39999],
+                                              [|2025-11-26T08:41:50.731Z|,'t',11.5],
+                                              [|2025-11-26T08:41:50.731Z|,'s',11.49999],
+                                              [|2025-11-26T08:41:50.837Z|,'s',11.59999],
+                                              [|2025-11-26T08:41:50.929Z|,'s',11.69999],
+                                              [|2025-11-26T08:41:51.036Z|,'s',11.79999],
+                                              [|2025-11-26T08:41:51.126Z|,'s',11.89999]]);
+
+// Get the value (the actual window) from the timeval
+value(:window);
+
+// From this window we can now extract each individual vector.
+// This can be done in two ways.
+
+// 1) Either by using an undefined index, which will give us
+//    the full extent of the window.
+
+select v from vector v, integer i where v = value(:window)[i];
+
+// 2) Or use the 'in' keyword to get all vectors in the window.
+
+select v from vector v where v in value(:window);
+
+
+// Ok so now we know how to get all vectors from a window.
+// Now we are going to compute the mean value for each topic in the window.
+
+// We start by dropping the timestamps from the vectors.
+
+select topic, value
+  from Real time, Charstring topic, 
+       Real value, Vector v
+ where v in value(:window)
+   and [time, topic, value] = v;
+
+// Now we have the vectors on ['topic', 'value'] format.
+// Now we can compute the average of each topic over the window by using
+// "group by"
+
+select topic, mean(value)
+  from Real time, Charstring topic, 
+       Real value, Vector v
+ where v in value(:window)
+   and [time, topic, value] = v
+   group by topic;
+
+
+// Lets put this into a function and make a vector output.
+
+create function compute_mean(timeval of vector of vector window) -> vector
+  as select vector of topic, mean(value)
+       from Real time, Charstring topic, 
+            Real value, Vector v
+      where v in value(window)
+        and [time, topic, value] = v
+      group by topic;
+
+
+// Test the function that computes the average of each topic in the window
+compute_mean(:window);
+
+
+// We want the result timestamped with the time the window was produces
+
+create function window_stats(timeval of vector of vector window) -> Timeval
+  as select ts(window, v)
+       from vector v
+      where v = roundto(compute_mean(window),4);
+
+// Test the function on our window
+window_stats(:window);
+
+
+// Ok, now we have a function that can do averaging of each topic over a
+// timestamped window. Let's plug in the stream and pass all windows to
+// that function. This will give us a stream of averages.
+
+select window_stats(w)
+  from timeval of vector of vector w 
+ where w in windowed_bus_stream();
+
+
+
+// We can wrap it in a function
+
+create function topic_means() -> stream of timeval
+  as select window_stats(w) 
+       from timeval of vector of vector w 
+      where w in windowed_bus_stream();
+
+
+// Test the function
+topic_means();
+
+
+
+//------ PLOTTING RESULTS -------------------------------------
+
+// Plot in single plot
+
+//plot: Line plot
+select ts(z, {
+    "avg(s)": value(z)[1][2],
+    "avg(t)": value(z)[2][2]
+    })
+  from timeval of vector of vector w,
+       timeval z
+ where w in windowed_bus_stream()
+   and z = window_stats(w);
+
+
+// Plot in separate plots
+
+//plot: Multi plot
+{
+  "sa_plots": [
+    {"sa_plot": "Line plot", "labels": ["avg(s)"], "grid": {"w": 50, "h":15}},
+    {"sa_plot": "Line plot", "labels": ["avg(t)"], "grid": {"w": 50, "h":15, "x": 50}}
+  ],
+  "labels": ["avg(s)","avg(t)"]
+};
+select [ts(z,value(z)[1][2]),
+        ts(z,value(z)[2][2])]
+  from timeval of vector of vector w,
+       timeval z
+ where w in windowed_bus_stream()
+   and z = window_stats(w);
+
+
+//------ USING REAL DATA -------------------------------------
+
+
+// Stream recorded data
+
+create function my_bus_stream() -> stream of vector
+  as csv:file_stream(sa_home() +
+                     "data/bol-truck-log/WCU-08-06_2025-05-26T05_02_46.351Z_log.csv");
+
+// Test stream
+first_n(my_bus_stream(), 10);
+
+
+// Load model with more generic version of 'topic_means'
+models:load("bus_stats");
+
+
+// Run averaging on the recorded data
+first_n(topic_means(my_bus_stream(), 5), 5);
+
+
+// ts(|1970-01-01T00:00:05.494Z|, [['BB1.AmbientAirTemperature',15.375],
+//                                 ['BB1.LongitudinalAcceleration',0.330539032],
+//                                 ['BB1.TotalVehicleDistanceHighRes',16789395],
+//                                 ['BB1.TransmissionGCVW',20000],
+//                                 ['BB1.VehicleMode',6],
+//                                 ['BB1.WheelBasedVehicleSpeed',6.90820316],
+//                                 ...
+// ts(|1970-01-01T00:00:10.494Z|, [['BB1.AmbientAirTemperature',14.6875],
+//                                 ['BB1.LongitudinalAcceleration',-0.142992176],
+//                                 ['BB1.TotalVehicleDistanceHighRes',16789407],
+//                                 ['BB1.TransmissionGCVW',20000],
+//                                 ['BB1.VehicleMode',6],
+//                                 ['BB1.WheelBasedVehicleSpeed',8.67539074],
+//                                 ...
+// ts(|1970-01-01T00:00:15.494Z|, [['BB1.AmbientAirTemperature',14.2125],
+//                                 ['BB1.LongitudinalAcceleration',-0.146691456],
+//                                 ['BB1.TotalVehicleDistanceHighRes',16789416],
+//                                 ['BB1.TransmissionGCVW',20000],
+//                                 ['BB1.VehicleMode',6],
+//                                 ['BB1.WheelBasedVehicleSpeed',3.824296920000001],
+//                                 ...
+// ts(|1970-01-01T00:00:20.494Z|, [['BB1.AmbientAirTemperature',14.1625],
+//                                 ['BB1.LongitudinalAcceleration',-0.06968735200000002],
+//                                 ['BB1.TotalVehicleDistanceHighRes',16789420],
+//                                 ['BB1.TransmissionGCVW',20000],
+//                                 ['BB1.VehicleMode',6],
+//                                 ['BB1.WheelBasedVehicleSpeed',0.5442969000000003],
+//                                 ...
+// ts(|1970-01-01T00:00:25.494Z|, [['BB1.AmbientAirTemperature',14.0875],
+//                                 ['BB1.LongitudinalAcceleration',0.000012],
+//                                 ['BB1.TotalVehicleDistanceHighRes',16789420],
+//                                 ['BB1.TransmissionGCVW',20000],
+//                                 ['BB1.VehicleMode',6],
+//                                 ['BB1.WheelBasedVehicleSpeed',0],
+//                                 ...
+
+
+
+
+// Uppföljande experiment:
+//   - Kalla functionen topic_aggr med vector av aggregeringsfunktioner
+// output [timestamp topic v1 v2 ...]
+// ex: min max mean std
+// ([om tid finns] eller sampla slumpmässigt värde ur fönster från can bus)
+// reduce
+
+// Simons kommunikation av modell/parametrar upp till server
+//  - kriterier för när och hur ofta
+//  - när vill man trigga (när vikter ändrats tillräckligt)
+
+// modelldrift(?)
+
+// Läsa AE Edge proj beskrivn och kolla gap
+
+
+
