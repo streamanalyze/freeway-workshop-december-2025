@@ -20,6 +20,9 @@ create function bus_test_stream() -> stream of vector
 // Test the stream
 bus_test_stream();
 
+// Pivot (duplicate values)
+pivot_events(['s','t'], bus_test_stream());
+
 
 //------ START IMPLEMENTATION ------------------------------------------
 
@@ -283,24 +286,5 @@ first_n(topic_means(my_bus_stream(), 5), 5);
 //                                 ['BB1.VehicleMode',6],
 //                                 ['BB1.WheelBasedVehicleSpeed',0],
 //                                 ...
-
-
-
-
-// Uppföljande experiment:
-//   - Kalla functionen topic_aggr med vector av aggregeringsfunktioner
-// output [timestamp topic v1 v2 ...]
-// ex: min max mean std
-// ([om tid finns] eller sampla slumpmässigt värde ur fönster från can bus)
-// reduce
-
-// Simons kommunikation av modell/parametrar upp till server
-//  - kriterier för när och hur ofta
-//  - när vill man trigga (när vikter ändrats tillräckligt)
-
-// modelldrift(?)
-
-// Läsa AE Edge proj beskrivn och kolla gap
-
 
 
