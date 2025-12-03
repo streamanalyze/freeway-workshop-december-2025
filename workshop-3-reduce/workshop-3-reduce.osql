@@ -3,22 +3,18 @@
 // http://localhost:33817/docs/guides/tutorial/streams#streamed-data-reduction
 
 
+create function my_operator(real a, real b) -> real
+  as 5*a*b + 10;
+
+
+reduce([1,2,3,4], "my_operator");
+
+
+
 create function max_n(Vector max_n1, Vector e_n)
                     -> Vector of Real
   as [e_n[1],             -- x_n
       max(e_n[2],         -- y_n
-          max_n1[2])]     -- max(y_1...Y_n-1)
+      max_n1[2])]         -- max(y_1...Y_n-1);
 
-
-
-
-create function my_operator(real a, real b) -> real
-  as 5*a*b + 10;
-
-reduce([1,2,3,4], thefunction("my_operator"));
-
-reduce([1,2,3,4], "my_operator");
-
-// bug
-reduce([1,2,3,4], #'my_operator');
 
