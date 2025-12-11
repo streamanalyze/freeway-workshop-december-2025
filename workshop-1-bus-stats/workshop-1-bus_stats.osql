@@ -187,7 +187,7 @@ select window_stats(w)
 // We can wrap it in a function
 
 create function topic_means() -> stream of timeval
-  as select window_stats(w) 
+  as select stream of window_stats(w)
        from timeval of vector of vector w 
       where w in windowed_bus_stream();
 
